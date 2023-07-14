@@ -11,8 +11,10 @@ pub const BACKGROUND_COLOUR: Color = Color::rgb(0.2, 0.2, 0.2);
 pub const BOARD_SIZE: f32 = 500.0;
 pub const SQUARE_SIZE: f32 = BOARD_SIZE / 8.0;
 pub const BOARD_CENTRE: Vec2 = Vec2::new(0.0, 0.0);
-pub const BOARD_SQUARE_WHITE_COLOUR: Color = Color::rgb(0.9, 0.9, 0.9);
-pub const BOARD_SQUARE_BLACK_COLOUR: Color = Color::rgb(0.15, 0.15, 0.15);
+pub const BOARD_SQUARE_WHITE_COLOUR: Color = Color::rgb(0.93, 0.93, 0.82);
+pub const BOARD_SQUARE_BLACK_COLOUR: Color = Color::rgb(0.46, 0.59, 0.34);
+pub const BOARD_SQUARE_WHITE_SELECT_COLOUR: Color = Color::rgb(0.96, 0.96, 0.41);
+pub const BOARD_SQUARE_BLACK_SELECT_COLOUR: Color = Color::rgb(0.73, 0.79, 0.16);
 
 // Enums
 pub enum Team {
@@ -33,7 +35,13 @@ pub enum Kind {
 // Components
 ////////////////////////////////////////////////////////////////
 #[derive(Component)]
-pub struct Piece{
+pub struct Square {
+    file: u8,
+    rank: u8
+}
+
+#[derive(Component)]
+pub struct Piece {
     team: Team,
     kind: Kind,
     position: u8
@@ -56,8 +64,11 @@ fn main() {
             ..default()
         }
     ))
-    .add_systems(Startup, spawn_camera)
-    .add_systems(Startup, spawn_board)
+    .add_systems(Startup, (
+        spawn_camera, 
+        spawn_board
+    ))
+    .add_systems(Update, select_square)
     .run();
 }
 
@@ -75,8 +86,8 @@ fn spawn_camera(
 fn spawn_board(
     mut commands: Commands,
 ) {
-    for rank in 0..8 {
-        for file in 0..8 {
+    for rank in 1..9 {
+        for file in 1..9 {
             let square_colour: Color;
             if (rank + file) % 2 == 0 {
                 square_colour = BOARD_SQUARE_WHITE_COLOUR;
@@ -90,12 +101,103 @@ fn spawn_board(
                     ..default()
                 },
                 transform: Transform::from_xyz(
-                    BOARD_CENTRE.x - (3.5 - file as f32) * SQUARE_SIZE, 
-                    BOARD_CENTRE.y + (3.5 - rank as f32) * SQUARE_SIZE, 
+                    BOARD_CENTRE.x - (4.5 - file as f32) * SQUARE_SIZE, 
+                    BOARD_CENTRE.y - (4.5 - rank as f32) * SQUARE_SIZE, 
                     0.0
                 ),
                 ..default()
-            });
+            })
+            .insert(Name::new(format!("{}{}", file_to_char(file), rank_to_char(rank))))
+            .insert(Square {rank, file});
         }
     }
+}
+
+fn select_square(
+    buttons: Res<Input<MouseButton>>,
+    window: Query<&Window>,
+    camera: Query<(&Camera, &GlobalTransform)>,
+    mut squares: Query<(&Square, &mut Sprite)>
+) {
+    if buttons.just_pressed(MouseButton::Left) {
+        let (camera, camera_transform) = camera.single();
+        if let Some(position) = window
+            .single()
+            .cursor_position()
+            .and_then(|cursor| camera
+                .viewport_to_world(camera_transform, cursor)
+            )
+            .map(|ray| ray.origin.truncate()) 
+        {
+            if position.x >= BOARD_CENTRE.x - 0.5*BOARD_SIZE &&
+               position.x <= BOARD_CENTRE.x + 0.5*BOARD_SIZE &&
+               position.y >= BOARD_CENTRE.y - 0.5*BOARD_SIZE &&
+               position.y <= BOARD_CENTRE.y + 0.5*BOARD_SIZE
+            {
+                let (file, rank) = world_to_board(position);
+                for (square, mut sprite) in squares.iter_mut() {
+                    if (square.rank + square.file) % 2 == 0 {
+                        if square.file == file && square.rank == rank {
+                            sprite.color = BOARD_SQUARE_WHITE_SELECT_COLOUR;
+                        } else {
+                            sprite.color = BOARD_SQUARE_WHITE_COLOUR;
+                        }
+                    } else {
+                        if square.file == file && square.rank == rank {
+                            sprite.color = BOARD_SQUARE_BLACK_SELECT_COLOUR;
+                        } else {
+                            sprite.color = BOARD_SQUARE_BLACK_COLOUR;
+                        }
+                    }
+                }
+            } else {
+                for (square, mut sprite) in squares.iter_mut() {
+                    if (square.rank + square.file) % 2 == 0 {
+                        sprite.color = BOARD_SQUARE_WHITE_COLOUR;
+                    } else {
+                        sprite.color = BOARD_SQUARE_BLACK_COLOUR;
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+////////////////////////////////////////////////////////////////
+// Helper functions
+////////////////////////////////////////////////////////////////
+
+fn file_to_char(file: u8) -> char {
+    match file {
+        1 => 'a',
+        2 => 'b',
+        3 => 'c',
+        4 => 'd',
+        5 => 'e',
+        6 => 'f',
+        7 => 'g',
+        8 => 'h',
+        _ => panic!()
+    }
+}
+
+fn rank_to_char(rank: u8) -> char {
+    match rank {
+        1 => '1',
+        2 => '2',
+        3 => '3',
+        4 => '4',
+        5 => '5',
+        6 => '6',
+        7 => '7',
+        8 => '8',
+        _ => panic!()
+    }
+}
+
+fn world_to_board(coord: Vec2) -> (u8, u8) {
+    let file = ((coord.x - BOARD_CENTRE.x + 0.5*BOARD_SIZE) / SQUARE_SIZE).ceil() as u8;
+    let rank = ((coord.y - BOARD_CENTRE.y + 0.5*BOARD_SIZE) / SQUARE_SIZE).ceil() as u8;
+    return (file, rank);
 }
