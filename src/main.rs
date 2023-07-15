@@ -37,7 +37,8 @@ pub enum Kind {
 #[derive(Component)]
 pub struct Square {
     file: u8,
-    rank: u8
+    rank: u8,
+    selected: bool
 }
 
 #[derive(Component)]
@@ -66,7 +67,8 @@ fn main() {
     ))
     .add_systems(Startup, (
         spawn_camera, 
-        spawn_board
+        spawn_board,
+        spawn_pieces
     ))
     .add_systems(Update, select_square)
     .run();
@@ -108,16 +110,37 @@ fn spawn_board(
                 ..default()
             })
             .insert(Name::new(format!("{}{}", file_to_char(file), rank_to_char(rank))))
-            .insert(Square {rank, file});
+            .insert(Square {rank, file, selected: false});
         }
     }
+}
+
+fn spawn_pieces(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>
+) {
+    commands.spawn(SpriteBundle {
+        sprite: Sprite {
+            ..default()
+        },
+        texture: asset_server.load("pieces/white_king.png"),
+        transform: Transform::from_xyz(
+            0.0,
+            0.0,
+            0.0
+        ),
+        ..default()
+    })
+    .insert(Name::new("white_king"))
+    .insert(Piece {team: Team::WHITE, kind: Kind::KING, position: 0});
+
 }
 
 fn select_square(
     buttons: Res<Input<MouseButton>>,
     window: Query<&Window>,
     camera: Query<(&Camera, &GlobalTransform)>,
-    mut squares: Query<(&Square, &mut Sprite)>
+    mut squares: Query<(&mut Square, &mut Sprite)>
 ) {
     if buttons.just_pressed(MouseButton::Left) {
         let (camera, camera_transform) = camera.single();
@@ -135,18 +158,22 @@ fn select_square(
                position.y <= BOARD_CENTRE.y + 0.5*BOARD_SIZE
             {
                 let (file, rank) = world_to_board(position);
-                for (square, mut sprite) in squares.iter_mut() {
+                for (mut square, mut sprite) in squares.iter_mut() {
                     if (square.rank + square.file) % 2 == 0 {
                         if square.file == file && square.rank == rank {
                             sprite.color = BOARD_SQUARE_WHITE_SELECT_COLOUR;
+                            square.selected = true;
                         } else {
                             sprite.color = BOARD_SQUARE_WHITE_COLOUR;
+                            square.selected = false;
                         }
                     } else {
                         if square.file == file && square.rank == rank {
                             sprite.color = BOARD_SQUARE_BLACK_SELECT_COLOUR;
+                            square.selected = true;
                         } else {
                             sprite.color = BOARD_SQUARE_BLACK_COLOUR;
+                            square.selected = false;
                         }
                     }
                 }
@@ -196,8 +223,33 @@ fn rank_to_char(rank: u8) -> char {
     }
 }
 
-fn world_to_board(coord: Vec2) -> (u8, u8) {
-    let file = ((coord.x - BOARD_CENTRE.x + 0.5*BOARD_SIZE) / SQUARE_SIZE).ceil() as u8;
-    let rank = ((coord.y - BOARD_CENTRE.y + 0.5*BOARD_SIZE) / SQUARE_SIZE).ceil() as u8;
+fn world_to_board(coords: Vec2) -> (u8, u8) {
+    let file = ((coords.x - BOARD_CENTRE.x + 0.5*BOARD_SIZE) / SQUARE_SIZE).ceil() as u8;
+    let rank = ((coords.y - BOARD_CENTRE.y + 0.5*BOARD_SIZE) / SQUARE_SIZE).ceil() as u8;
     return (file, rank);
+}
+
+fn board_to_world(coords: (u8, u8)) -> Vec2 {
+    let (file, rank) = coords;
+    let x: f32 = BOARD_CENTRE.x - (4.5 - file as f32) * SQUARE_SIZE;
+    let y: f32 = BOARD_CENTRE.y - (4.5 - rank as f32) * SQUARE_SIZE;
+    return Vec2::new(x, y);
+}
+
+fn get_piece_name(team: Team, kind: Kind) -> String {
+    let team_str = match team {
+        Team::WHITE => "white", 
+        Team::BLACK => "black" 
+    };
+    
+    let kind_str = match kind {
+        Kind::PAWN    => "pawn",
+        Kind::KNIGHT  => "knight",
+        Kind::BISHOP  => "bishop",
+        Kind::ROOK    => "rook",
+        Kind::QUEEN   => "queen",
+        Kind::KING    => "king"
+    };
+
+    return format!("{}_{}", team_str, kind_str);
 }
