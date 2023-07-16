@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 // bevy namespace uses
 use bevy::prelude::*;
 
@@ -15,12 +17,15 @@ pub const BOARD_SQUARE_WHITE_COLOUR: Color = Color::rgb(0.93, 0.93, 0.82);
 pub const BOARD_SQUARE_BLACK_COLOUR: Color = Color::rgb(0.46, 0.59, 0.34);
 pub const BOARD_SQUARE_WHITE_SELECT_COLOUR: Color = Color::rgb(0.96, 0.96, 0.41);
 pub const BOARD_SQUARE_BLACK_SELECT_COLOUR: Color = Color::rgb(0.73, 0.79, 0.16);
+pub const STARTING_FEN_STRING: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";
 
 // Enums
+#[derive(Debug)]
 pub enum Team {
     WHITE,
     BLACK
 }
+#[derive(Debug)]
 pub enum Kind {
     PAWN,
     KNIGHT,
@@ -41,11 +46,11 @@ pub struct Square {
     selected: bool
 }
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct Piece {
     team: Team,
     kind: Kind,
-    position: u8
+    position: (u8, u8)
 }
 
 ////////////////////////////////////////////////////////////////
@@ -119,21 +124,24 @@ fn spawn_pieces(
     mut commands: Commands,
     asset_server: Res<AssetServer>
 ) {
-    commands.spawn(SpriteBundle {
-        sprite: Sprite {
+    let pieces: Vec<Piece> = fen_string_to_piece_vec(STARTING_FEN_STRING).unwrap();
+    for piece in pieces {
+        let world_position = board_to_world(piece.position);
+        let piece_name = get_piece_name(&piece.team, &piece.kind);
+        commands.spawn(SpriteBundle {
+            sprite: Sprite {
+                ..default()
+            },
+            transform: Transform::from_xyz(
+                world_position.x,
+                world_position.y,
+                1.0
+            ),
+            texture: asset_server.load(format!("pieces/{}.png", piece_name)),
             ..default()
-        },
-        texture: asset_server.load("pieces/white_king.png"),
-        transform: Transform::from_xyz(
-            0.0,
-            0.0,
-            0.0
-        ),
-        ..default()
-    })
-    .insert(Name::new("white_king"))
-    .insert(Piece {team: Team::WHITE, kind: Kind::KING, position: 0});
-
+        })
+        .insert(piece);
+    }
 }
 
 fn select_square(
@@ -236,7 +244,7 @@ fn board_to_world(coords: (u8, u8)) -> Vec2 {
     return Vec2::new(x, y);
 }
 
-fn get_piece_name(team: Team, kind: Kind) -> String {
+fn get_piece_name(team: &Team, kind: &Kind) -> String {
     let team_str = match team {
         Team::WHITE => "white", 
         Team::BLACK => "black" 
@@ -252,4 +260,32 @@ fn get_piece_name(team: Team, kind: Kind) -> String {
     };
 
     return format!("{}_{}", team_str, kind_str);
+}
+
+fn fen_string_to_piece_vec(fen: &str) -> Result<Vec<Piece>, String> {
+    let mut piece_vec: Vec<Piece> = Vec::new();
+    let mut current_rank: u8 = 8;
+    let mut current_file: u8 = 1;
+
+    for char in fen.chars() {
+        match char {
+            'P'       => {piece_vec.push(Piece {team: Team::WHITE, kind: Kind::PAWN,   position: (current_file, current_rank)}); current_file += 1},
+            'N'       => {piece_vec.push(Piece {team: Team::WHITE, kind: Kind::KNIGHT, position: (current_file, current_rank)}); current_file += 1},
+            'B'       => {piece_vec.push(Piece {team: Team::WHITE, kind: Kind::BISHOP, position: (current_file, current_rank)}); current_file += 1},
+            'R'       => {piece_vec.push(Piece {team: Team::WHITE, kind: Kind::ROOK,   position: (current_file, current_rank)}); current_file += 1},
+            'Q'       => {piece_vec.push(Piece {team: Team::WHITE, kind: Kind::QUEEN,  position: (current_file, current_rank)}); current_file += 1},
+            'K'       => {piece_vec.push(Piece {team: Team::WHITE, kind: Kind::KING,   position: (current_file, current_rank)}); current_file += 1},
+            'p'       => {piece_vec.push(Piece {team: Team::BLACK, kind: Kind::PAWN,   position: (current_file, current_rank)}); current_file += 1},
+            'n'       => {piece_vec.push(Piece {team: Team::BLACK, kind: Kind::KNIGHT, position: (current_file, current_rank)}); current_file += 1},
+            'b'       => {piece_vec.push(Piece {team: Team::BLACK, kind: Kind::BISHOP, position: (current_file, current_rank)}); current_file += 1},
+            'r'       => {piece_vec.push(Piece {team: Team::BLACK, kind: Kind::ROOK,   position: (current_file, current_rank)}); current_file += 1},
+            'q'       => {piece_vec.push(Piece {team: Team::BLACK, kind: Kind::QUEEN,  position: (current_file, current_rank)}); current_file += 1},
+            'k'       => {piece_vec.push(Piece {team: Team::BLACK, kind: Kind::KING,   position: (current_file, current_rank)}); current_file += 1},
+            '/'       => {current_file = 1; current_rank -= 1},
+            '1'..='8' => {current_file += char.to_digit(10).unwrap() as u8},
+            _         => return Result::Err(format!("Non-fen char '{}' found in fen string", char))  // TODO: Improve this with proper error type
+        }
+    }
+
+    return Result::Ok(piece_vec);
 }
